@@ -83,9 +83,16 @@ export const gamificationService = {
 
       if (userProj) {
         execute(
-          `INSERT INTO contributions (user_id, project_id, activity_type, points, xp, description)
-           VALUES (?, ?, 'arena_challenge', ?, ?, ?);`,
-          [userId, userProj.id, challenge.xp_reward, challenge.xp_reward, `Completed Arena Challenge: ${challenge.title}`]
+          `INSERT INTO contributions (user_id, project_id, activity_type, points, xp, description, external_id)
+           VALUES (?, ?, 'arena_challenge', ?, ?, ?, ?);`,
+          [
+            userId,
+            userProj.id,
+            challenge.xp_reward,
+            challenge.xp_reward,
+            `Completed Arena Challenge: ${challenge.title}`,
+            `challenge:${challengeId}:${userId}`,
+          ]
         );
       }
 

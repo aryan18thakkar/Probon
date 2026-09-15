@@ -193,7 +193,19 @@ export const api = {
 
   progress: {
     getDashboard: () => request('/progress/dashboard'),
-    getContributions: () => request('/progress/contributions'),
+    getContributions: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return request(`/progress/contributions${qs ? `?${qs}` : ''}`);
+    },
+    getProjectContributions: (projectId, params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return request(`/progress/contributions/project/${projectId}${qs ? `?${qs}` : ''}`);
+    },
+    recordContribution: (data) =>
+      request('/progress/contributions', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
 
   chat: {

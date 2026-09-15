@@ -349,6 +349,56 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
     assert.ok(Array.isArray(res.body.data.recentActivities));
   });
 
+  test('Query unified contributions and test idempotent deduplication', async () => {
+    // 1. Fetch user contributions
+    const userContribsRes = await request(app)
+      .get('/api/progress/contributions')
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.strictEqual(userContribsRes.status, 200);
+    assert.ok(Array.isArray(userContribsRes.body.data));
+    // The completed task should already have created a contribution
+    const taskContrib = userContribsRes.body.data.find((c) => c.external_id === `task:${taskId}`);
+    assert.ok(taskContrib, 'Completed task must generate a contribution with external_id task:<id>');
+
+    // 2. Query project-scoped contributions
+    const projContribsRes = await request(app)
+      .get(`/api/progress/contributions/project/${projectId}`)
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.strictEqual(projContribsRes.status, 200);
+    assert.ok(Array.isArray(projContribsRes.body.data));
+    assert.ok(projContribsRes.body.data.length > 0);
+
+    // 3. Record a contribution with an external_id
+    const recordRes1 = await request(app)
+      .post('/api/progress/contributions')
+      .set('Authorization', `Bearer ${studentToken}`)
+      .send({
+        projectId: projectId,
+        activityType: 'code_review',
+        points: 20,
+        xp: 20,
+        description: 'Reviewed Pull Request #14 architecture changes',
+        externalId: 'review:pr:14',
+      });
+    assert.strictEqual(recordRes1.status, 201);
+    assert.strictEqual(recordRes1.body.data.recorded, true);
+
+    // 4. Record identical contribution with the same external_id (idempotency check)
+    const recordRes2 = await request(app)
+      .post('/api/progress/contributions')
+      .set('Authorization', `Bearer ${studentToken}`)
+      .send({
+        projectId: projectId,
+        activityType: 'code_review',
+        points: 20,
+        xp: 20,
+        description: 'Reviewed Pull Request #14 architecture changes',
+        externalId: 'review:pr:14',
+      });
+    assert.strictEqual(recordRes2.status, 201);
+    assert.strictEqual(recordRes2.body.data.recorded, false, 'Duplicate external_id should be skipped');
+  });
+
   // 8. User Scoping & Isolation between different Students, Teams, Projects, and Tasks
   test('Strict User Scoping: Student A cannot retrieve Student B team project or tasks through user-scoped endpoints', async () => {
     // 1. Register Student A

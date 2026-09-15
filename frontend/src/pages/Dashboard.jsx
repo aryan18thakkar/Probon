@@ -852,17 +852,48 @@ function Dashboard() {
 
               <div className="activity-list">
                 {activities.length > 0 ? (
-                  activities.map((act) => (
-                    <div key={act.id} className="activity-item">
-                      <div className="activity-icon">✓</div>
-                      <div className="activity-info">
-                        <strong>{act.description}</strong>
-                        <span>
-                          {act.project_name || "Project"} · {new Date(act.recorded_at).toLocaleDateString()}
-                        </span>
+                  activities.map((act) => {
+                    const isGit = act.activity_type?.startsWith("github");
+                    const isTask = act.activity_type === "task_completion";
+                    const isArena = act.activity_type === "arena_challenge";
+                    const icon = isGit ? "⎇" : isTask ? "✓" : isArena ? "⚔" : "⚡";
+
+                    return (
+                      <div key={act.id} className="activity-item" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <div
+                          className="activity-icon"
+                          style={{
+                            background: isGit ? "#18132e" : isTask ? "#0e2417" : "#261a0b",
+                            color: isGit ? "#a78bfa" : isTask ? "#4ade80" : "#fbbf24",
+                            border: `1px solid ${isGit ? "#3b2d6a" : isTask ? "#14532d" : "#78350f"}`,
+                            fontSize: "12px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: "28px",
+                            height: "28px",
+                            borderRadius: "6px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {icon}
+                        </div>
+                        <div className="activity-info" style={{ flex: 1 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                            <strong style={{ fontSize: "12px" }}>{act.description}</strong>
+                            {act.xp > 0 && (
+                              <span style={{ fontSize: "9px", color: "#a78bfa", fontWeight: "700", marginLeft: "6px" }}>
+                                +{act.xp} XP
+                              </span>
+                            )}
+                          </div>
+                          <span style={{ fontSize: "10px", color: "#71717a" }}>
+                            {act.project_name || "Project"} · {new Date(act.recorded_at).toLocaleDateString()}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div style={{ padding: "15px 0", color: "#666a76", fontSize: "11px" }}>
                     No recent activities recorded yet. Complete tasks or contribute to earn XP!

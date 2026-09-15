@@ -194,6 +194,8 @@ CREATE TABLE IF NOT EXISTS contributions (
   points INTEGER NOT NULL DEFAULT 0,
   xp INTEGER NOT NULL DEFAULT 0,
   description TEXT NOT NULL,
+  external_id TEXT,
+  metadata TEXT,
   recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
@@ -258,6 +260,8 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_github_activities_project ON github_activities(project_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_channel ON chat_messages(channel_id);
+CREATE INDEX IF NOT EXISTS idx_contributions_external_id ON contributions(external_id);
+CREATE INDEX IF NOT EXISTS idx_contributions_user ON contributions(user_id);
 
 CREATE TABLE IF NOT EXISTS arena_challenges (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

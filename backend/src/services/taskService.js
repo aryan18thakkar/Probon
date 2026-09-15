@@ -250,9 +250,17 @@ export const taskService = {
           ]);
 
           execute(
-            `INSERT INTO contributions (user_id, project_id, task_id, activity_type, points, xp, description)
-             VALUES (?, ?, ?, 'task_completion', ?, ?, ?);`,
-            [beneficiaryId, existing.project_id, taskId, existing.xp_value, existing.xp_value, `Completed task: ${existing.title}`]
+            `INSERT INTO contributions (user_id, project_id, task_id, activity_type, points, xp, description, external_id)
+             VALUES (?, ?, ?, 'task_completion', ?, ?, ?, ?);`,
+            [
+              beneficiaryId,
+              existing.project_id,
+              taskId,
+              existing.xp_value,
+              existing.xp_value,
+              `Completed task: ${existing.title}`,
+              `task:${taskId}`,
+            ]
           );
         }
       }

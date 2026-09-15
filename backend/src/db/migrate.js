@@ -50,6 +50,23 @@ export function runMigrations() {
     console.error('Migration error checking repositories columns:', err);
   }
 
+  // Ensure contributions table has external_id and metadata columns
+  try {
+    const contribCols = db.prepare('PRAGMA table_info(contributions);').all();
+    const existing = new Set(contribCols.map((c) => c.name));
+
+    if (!existing.has('external_id')) {
+      db.exec('ALTER TABLE contributions ADD COLUMN external_id TEXT;');
+    }
+    if (!existing.has('metadata')) {
+      db.exec('ALTER TABLE contributions ADD COLUMN metadata TEXT;');
+    }
+    db.exec('CREATE INDEX IF NOT EXISTS idx_contributions_external_id ON contributions(external_id);');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_contributions_user ON contributions(user_id);');
+  } catch (err) {
+    console.error('Migration error checking contributions columns:', err);
+  }
+
   console.log('Database migrations applied successfully.');
 }
 

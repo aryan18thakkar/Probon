@@ -1,5 +1,6 @@
 import { config } from '../config/env.js';
 import { execute, queryAll, queryOne, transaction } from '../config/database.js';
+import { progressService } from './progressService.js';
 
 function parseGitHubUrl(url) {
   if (!url) return null;
@@ -128,6 +129,19 @@ export const githubService = {
                 ]
               );
               syncedCount++;
+
+              if (matchedUser?.id) {
+                progressService.recordContribution({
+                  userId: matchedUser.id,
+                  projectId,
+                  activityType: 'github_commit',
+                  points: 15,
+                  xp: 15,
+                  description: `Git commit: ${message.substring(0, 100)}`,
+                  externalId: `commit:${hash}`,
+                  metadata: { commit_hash: hash, branch: repo.default_branch, author: authorLogin },
+                });
+              }
             }
           }
         }
@@ -176,6 +190,19 @@ export const githubService = {
                 ]
               );
               syncedCount++;
+
+              if (matchedUser?.id) {
+                progressService.recordContribution({
+                  userId: matchedUser.id,
+                  projectId,
+                  activityType: 'github_pr',
+                  points: 25,
+                  xp: 25,
+                  description: `GitHub PR #${prNumber}: ${title.substring(0, 80)}`,
+                  externalId: `pr:${repo.id}:${prNumber}`,
+                  metadata: { pr_number: prNumber, branch: p.head?.ref, author: authorLogin },
+                });
+              }
             }
           }
         }
@@ -227,6 +254,19 @@ export const githubService = {
                 ]
               );
               syncedCount++;
+
+              if (matchedUser?.id) {
+                progressService.recordContribution({
+                  userId: matchedUser.id,
+                  projectId,
+                  activityType: 'github_issue',
+                  points: 10,
+                  xp: 10,
+                  description: `GitHub Issue #${issueNumber}: ${title.substring(0, 80)}`,
+                  externalId: `issue:${repo.id}:${issueNumber}`,
+                  metadata: { issue_number: issueNumber, author: authorLogin },
+                });
+              }
             }
           }
         }
