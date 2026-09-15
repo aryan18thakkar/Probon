@@ -48,6 +48,24 @@ function Dashboard() {
   const [joinError, setJoinError] = useState("");
   const [joinSuccess, setJoinSuccess] = useState("");
 
+  // Email verification state
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const [verificationStatusMsg, setVerificationStatusMsg] = useState("");
+
+  const handleResendVerification = async () => {
+    setResendingVerification(true);
+    setVerificationStatusMsg("");
+    try {
+      const res = await api.auth.resendVerification();
+      setVerificationStatusMsg(res.message || "Verification link sent!");
+      setTimeout(() => setVerificationStatusMsg(""), 4000);
+    } catch (err) {
+      alert(err.message || "Failed to resend verification email.");
+    } finally {
+      setResendingVerification(false);
+    }
+  };
+
   const loadDashboard = async () => {
     try {
       setLoading(true);
@@ -421,6 +439,42 @@ function Dashboard() {
 
         {/* CONTENT */}
         <div className="dashboard-content">
+          {/* EMAIL VERIFICATION BANNER */}
+          {user && user.email_verified === 0 && (
+            <div
+              style={{
+                marginBottom: "20px",
+                padding: "10px 16px",
+                borderRadius: "8px",
+                background: "rgba(234, 179, 8, 0.1)",
+                border: "1px solid rgba(234, 179, 8, 0.25)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#facc15", fontSize: "12px" }}>
+                <span>✉</span>
+                <span>Your email address (<strong>{user.email}</strong>) is not verified yet.</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                {verificationStatusMsg && (
+                  <span style={{ fontSize: "11px", color: "#4ade80" }}>{verificationStatusMsg}</span>
+                )}
+                <button
+                  className="secondary-button"
+                  style={{ fontSize: "10px", padding: "5px 10px" }}
+                  onClick={handleResendVerification}
+                  disabled={resendingVerification}
+                >
+                  {resendingVerification ? "Sending..." : "Resend Verification Email"}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* WELCOME */}
           <section className="welcome-section">
             <div>

@@ -48,6 +48,25 @@ export const api = {
       localStorage.removeItem('projnan_user');
       return request('/auth/logout', { method: 'POST' }).catch(() => ({}));
     },
+    forgotPassword: (email) =>
+      request('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      }),
+    resetPassword: (data) =>
+      request('/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    verifyEmail: (token) =>
+      request('/auth/verify-email', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      }),
+    resendVerification: () =>
+      request('/auth/resend-verification', {
+        method: 'POST',
+      }),
   },
 
   classes: {

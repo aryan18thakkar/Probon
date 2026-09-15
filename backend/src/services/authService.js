@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/env.js';
@@ -85,12 +86,13 @@ export const authService = {
 
     const passwordHash = await bcrypt.hash(password, 10);
     const avatar = generateAvatar(trimmedName);
+    const verificationToken = crypto.randomBytes(32).toString('hex');
 
     return transaction(() => {
       const userInsert = execute(
-        `INSERT INTO users (name, username, email, password_hash, role, avatar, xp, points, rank, email_verified)
-         VALUES (?, ?, ?, ?, ?, ?, 0, 0, 'Level 1', 0);`,
-        [trimmedName, normalizedUsername, normalizedEmail, passwordHash, validRole, avatar]
+        `INSERT INTO users (name, username, email, password_hash, role, avatar, xp, points, rank, email_verified, verification_token)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 0, 'Level 1', 0, ?);`,
+        [trimmedName, normalizedUsername, normalizedEmail, passwordHash, validRole, avatar, verificationToken]
       );
 
       const userId = Number(userInsert.lastInsertRowid);
@@ -124,6 +126,7 @@ export const authService = {
       return {
         user: newUser,
         token,
+        verificationToken,
       };
     });
   },
@@ -186,6 +189,138 @@ export const authService = {
         classes: classCount,
         teams: teamCount,
       },
+    };
+  },
+
+  verifyEmail(token) {
+    if (!token || typeof token !== 'string') {
+      const err = new Error('Verification token is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const user = queryOne('SELECT id, email, email_verified FROM users WHERE verification_token = ?;', [token.trim()]);
+    if (!user) {
+      const err = new Error('Invalid or expired verification token.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    execute('UPDATE users SET email_verified = 1, verification_token = NULL WHERE id = ?;', [user.id]);
+
+    return {
+      success: true,
+      message: 'Email verified successfully.',
+    };
+  },
+
+  resendVerification(userId) {
+    const user = queryOne('SELECT id, email, email_verified FROM users WHERE id = ?;', [userId]);
+    if (!user) {
+      const err = new Error('User not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (user.email_verified) {
+      return {
+        success: true,
+        message: 'Your email address is already verified.',
+      };
+    }
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    execute('UPDATE users SET verification_token = ? WHERE id = ?;', [verificationToken, userId]);
+
+    return {
+      success: true,
+      message: 'Verification link sent to your email address.',
+      verificationToken,
+    };
+  },
+
+  forgotPassword(email) {
+    if (!email || !email.trim()) {
+      const err = new Error('Email address is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = queryOne('SELECT id, email FROM users WHERE email = ?;', [normalizedEmail]);
+
+    if (!user) {
+      // Return success message to prevent user enumeration
+      return {
+        success: true,
+        message: 'If an account exists with this email, password reset instructions have been sent.',
+      };
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 3600000).toISOString(); // 1 hour expiration
+
+    execute(
+      'UPDATE users SET reset_password_token = ?, reset_password_expires = ? WHERE id = ?;',
+      [resetToken, expires, user.id]
+    );
+
+    return {
+      success: true,
+      message: 'If an account exists with this email, password reset instructions have been sent.',
+      resetToken, // included for dev workflow
+    };
+  },
+
+  async resetPassword({ token, newPassword }) {
+    if (!token || !newPassword) {
+      const err = new Error('Reset token and new password are required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const user = queryOne(
+      'SELECT id, email, reset_password_expires FROM users WHERE reset_password_token = ?;',
+      [token.trim()]
+    );
+
+    if (!user) {
+      const err = new Error('Invalid or expired password reset token.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (user.reset_password_expires && new Date(user.reset_password_expires) < new Date()) {
+      const err = new Error('Password reset token has expired. Please request a new one.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Password complexity check
+    const hasMinLen = newPassword.length >= 8;
+    const hasUpper = /[A-Z]/.test(newPassword);
+    const hasLower = /[a-z]/.test(newPassword);
+    const hasNumber = /[0-9]/.test(newPassword);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>_\-+=[\]\\\/~`';]/.test(newPassword);
+
+    if (!hasMinLen || !hasUpper || !hasLower || !hasNumber || !hasSpecial) {
+      const err = new Error(
+        'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character.'
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    execute(
+      'UPDATE users SET password_hash = ?, reset_password_token = NULL, reset_password_expires = NULL WHERE id = ?;',
+      [passwordHash, user.id]
+    );
+
+    return {
+      success: true,
+      message: 'Password reset successfully. You can now log in with your new password.',
     };
   },
 };

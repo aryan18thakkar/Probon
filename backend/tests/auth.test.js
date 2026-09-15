@@ -148,4 +148,99 @@ describe('Authentication & RBAC API Endpoints', () => {
     assert.strictEqual(res.status, 401);
     assert.strictEqual(res.body.success, false);
   });
+
+  // Verification & Password Reset Tests
+  let verificationUserEmail = '';
+  let verificationToken = '';
+
+  test('POST /api/auth/register generates verificationToken', async () => {
+    verificationUserEmail = `verify_${Date.now()}@example.com`;
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Verification User',
+        username: `verify_${Date.now()}`,
+        email: verificationUserEmail,
+        password: 'Password123!',
+      });
+
+    assert.strictEqual(res.status, 201);
+    assert.ok(res.body.data.verificationToken);
+    verificationToken = res.body.data.verificationToken;
+  });
+
+  test('POST /api/auth/verify-email verifies email with valid token', async () => {
+    const res = await request(app)
+      .post('/api/auth/verify-email')
+      .send({ token: verificationToken });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.success, true);
+    assert.strictEqual(res.body.message, 'Email verified successfully.');
+  });
+
+  test('POST /api/auth/verify-email rejects invalid or already used token', async () => {
+    const res = await request(app)
+      .post('/api/auth/verify-email')
+      .send({ token: 'invalid-or-consumed-token' });
+
+    assert.strictEqual(res.status, 400);
+    assert.strictEqual(res.body.success, false);
+  });
+
+  let resetToken = '';
+
+  test('POST /api/auth/forgot-password generates reset token for valid email', async () => {
+    const res = await request(app)
+      .post('/api/auth/forgot-password')
+      .send({ email: verificationUserEmail });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.success, true);
+    assert.ok(res.body.resetToken);
+    resetToken = res.body.resetToken;
+  });
+
+  test('POST /api/auth/reset-password rejects weak new password', async () => {
+    const res = await request(app)
+      .post('/api/auth/reset-password')
+      .send({
+        token: resetToken,
+        newPassword: 'weak',
+      });
+
+    assert.strictEqual(res.status, 400);
+    assert.strictEqual(res.body.success, false);
+  });
+
+  test('POST /api/auth/reset-password successfully updates password', async () => {
+    const res = await request(app)
+      .post('/api/auth/reset-password')
+      .send({
+        token: resetToken,
+        newPassword: 'NewPassword123!',
+      });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.success, true);
+
+    // Old password should now fail
+    const oldLoginRes = await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: verificationUserEmail,
+        password: 'Password123!',
+      });
+    assert.strictEqual(oldLoginRes.status, 401);
+
+    // New password should succeed
+    const newLoginRes = await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: verificationUserEmail,
+        password: 'NewPassword123!',
+      });
+    assert.strictEqual(newLoginRes.status, 200);
+    assert.ok(newLoginRes.body.data.token);
+  });
 });

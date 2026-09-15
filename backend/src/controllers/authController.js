@@ -56,4 +56,43 @@ export const authController = {
       message: 'Logged out successfully.',
     });
   },
+
+  verifyEmail(req, res, next) {
+    try {
+      const token = req.body.token || req.query.token;
+      const result = authService.verifyEmail(token);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  resendVerification(req, res, next) {
+    try {
+      const result = authService.resendVerification(req.user.id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  forgotPassword(req, res, next) {
+    try {
+      const { email } = req.body;
+      const result = authService.forgotPassword(email);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async resetPassword(req, res, next) {
+    try {
+      const { token, newPassword } = req.body;
+      const result = await authService.resetPassword({ token, newPassword });
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
 };

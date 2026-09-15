@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS users (
   bio TEXT,
   github_username TEXT,
   email_verified INTEGER DEFAULT 0,
+  verification_token TEXT,
+  reset_password_token TEXT,
+  reset_password_expires DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
