@@ -1,14 +1,29 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import "./Auth.css";
 
 function Login() {
-
   const navigate = useNavigate();
+  const { login } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
+    setError("");
+    setLoading(true);
 
-    navigate("/dashboard");
+    try {
+      await login({ email: email.trim().toLowerCase(), password });
+      navigate("/dashboard");
+    } catch (err) {
+      setError(err.message || "Failed to sign in. Please check your credentials.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -52,6 +67,11 @@ function Login() {
           </p>
 
           <form onSubmit={handleLogin}>
+            {error && (
+              <div style={{ padding: '10px 12px', marginBottom: '16px', borderRadius: '7px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', fontSize: '11px' }}>
+                {error}
+              </div>
+            )}
 
             <label>
               Email
@@ -60,6 +80,8 @@ function Login() {
             <input
               type="email"
               placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
             />
 
@@ -70,6 +92,8 @@ function Login() {
             <input
               type="password"
               placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               required
             />
 
@@ -89,8 +113,9 @@ function Login() {
             <button
               type="submit"
               className="auth-button"
+              disabled={loading}
             >
-              Sign In →
+              {loading ? "Signing in..." : "Sign In →"}
             </button>
 
           </form>

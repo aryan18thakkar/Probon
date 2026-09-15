@@ -1,0 +1,308 @@
+import { execute, queryAll, queryOne, transaction } from '../config/database.js';
+
+function recalculateProjectProgress(projectId) {
+  const stats = queryOne(
+    `SELECT COUNT(*) as total,
+            SUM(CASE WHEN status = 'Completed' THEN 1 ELSE 0 END) as completed
+     FROM tasks WHERE project_id = ?;`,
+    [projectId]
+  );
+
+  const total = stats?.total || 0;
+  const completed = stats?.completed || 0;
+  const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  execute('UPDATE projects SET progress = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;', [progress, projectId]);
+  return progress;
+}
+
+export const taskService = {
+  createTask({
+    projectId,
+    milestoneId,
+    title,
+    description,
+    assignedToId,
+    priority = 'medium',
+    deadline,
+    taskType = 'weekly',
+    xpValue = 50,
+    createdById,
+  }) {
+    if (!projectId || !title || !title.trim()) {
+      const err = new Error('Project ID and task title are required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const project = queryOne('SELECT id FROM projects WHERE id = ?;', [projectId]);
+    if (!project) {
+      const err = new Error('Project not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const validPriority = ['low', 'medium', 'high', 'urgent'].includes(priority) ? priority : 'medium';
+    const validTaskType = ['daily', 'weekly', 'monthly'].includes(taskType) ? taskType : 'weekly';
+    const finalAssignedToId = assignedToId
+      ? parseInt(assignedToId, 10)
+      : (createdById ? parseInt(createdById, 10) : null);
+
+    return transaction(() => {
+      const result = execute(
+        `INSERT INTO tasks (
+          project_id, milestone_id, title, description, assigned_to_id, created_by_id,
+          priority, deadline, task_type, status, xp_value
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Planned', ?);`,
+        [
+          projectId,
+          milestoneId || null,
+          title.trim(),
+          description ? description.trim() : '',
+          finalAssignedToId,
+          createdById,
+          validPriority,
+          deadline || null,
+          validTaskType,
+          xpValue,
+        ]
+      );
+
+      const taskId = Number(result.lastInsertRowid);
+      recalculateProjectProgress(projectId);
+
+      // If assigned to someone, notify them
+      if (finalAssignedToId && finalAssignedToId !== createdById) {
+        execute(
+          `INSERT INTO notifications (user_id, title, message, type)
+           VALUES (?, 'New Task Assigned', ?, 'system');`,
+          [finalAssignedToId, `You have been assigned task: "${title.trim()}"`]
+        );
+      }
+
+      return this.getTaskById(taskId);
+    });
+  },
+
+  getTaskById(taskId) {
+    const task = queryOne(
+      `SELECT t.*,
+              p.name as project_name,
+              m.title as milestone_title,
+              u_assigned.name as assigned_to_name,
+              u_assigned.avatar as assigned_to_avatar,
+              u_created.name as created_by_name
+       FROM tasks t
+       JOIN projects p ON t.project_id = p.id
+       LEFT JOIN milestones m ON t.milestone_id = m.id
+       LEFT JOIN users u_assigned ON t.assigned_to_id = u_assigned.id
+       LEFT JOIN users u_created ON t.created_by_id = u_created.id
+       WHERE t.id = ?;`,
+      [taskId]
+    );
+
+    if (!task) {
+      const err = new Error('Task not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Attach latest verification details if any
+    const verification = queryOne(
+      `SELECT tv.*, u.name as verified_by_name
+       FROM task_verifications tv
+       LEFT JOIN users u ON tv.verified_by_id = u.id
+       WHERE tv.task_id = ?
+       ORDER BY tv.created_at DESC LIMIT 1;`,
+      [taskId]
+    );
+
+    return {
+      ...task,
+      verification: verification || null,
+    };
+  },
+
+  getTasks({ projectId, assignedToId, userId, userProjectTasks, status, taskType, priority, milestoneId } = {}) {
+    let sql = `
+      SELECT t.*,
+             p.name as project_name,
+             m.title as milestone_title,
+             u_assigned.name as assigned_to_name,
+             u_assigned.avatar as assigned_to_avatar
+      FROM tasks t
+      JOIN projects p ON t.project_id = p.id
+      LEFT JOIN milestones m ON t.milestone_id = m.id
+      LEFT JOIN users u_assigned ON t.assigned_to_id = u_assigned.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (projectId) {
+      sql += ' AND t.project_id = ?';
+      params.push(projectId);
+    }
+    if (assignedToId) {
+      sql += ' AND t.assigned_to_id = ?';
+      params.push(assignedToId);
+    }
+    if (userId) {
+      sql += ' AND (t.assigned_to_id = ? OR t.created_by_id = ?)';
+      params.push(userId, userId);
+    }
+    if (userProjectTasks) {
+      sql += ` AND t.project_id IN (
+        SELECT p.id FROM projects p
+        JOIN team_members tm ON p.team_id = tm.team_id
+        WHERE tm.user_id = ?
+        UNION
+        SELECT p.id FROM projects p
+        JOIN classes c ON p.class_id = c.id
+        WHERE c.teacher_id = ?
+      )`;
+      params.push(userProjectTasks, userProjectTasks);
+    }
+    if (status) {
+      sql += ' AND t.status = ?';
+      params.push(status);
+    }
+    if (taskType) {
+      sql += ' AND t.task_type = ?';
+      params.push(taskType);
+    }
+    if (priority) {
+      sql += ' AND t.priority = ?';
+      params.push(priority);
+    }
+    if (milestoneId) {
+      sql += ' AND t.milestone_id = ?';
+      params.push(milestoneId);
+    }
+
+    sql += " ORDER BY CASE t.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, t.deadline ASC, t.created_at DESC;";
+
+    return queryAll(sql, params);
+  },
+
+  updateTask(taskId, updates, userId) {
+    const existing = queryOne('SELECT * FROM tasks WHERE id = ?;', [taskId]);
+    if (!existing) {
+      const err = new Error('Task not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const {
+      title,
+      description,
+      assignedToId,
+      milestoneId,
+      priority,
+      deadline,
+      taskType,
+      status,
+      completionEvidence,
+      verificationStatus,
+    } = updates;
+
+    const validStatus = ['Planned', 'In Progress', 'Verification Pending', 'Completed'].includes(status)
+      ? status
+      : existing.status;
+
+    return transaction(() => {
+      execute(
+        `UPDATE tasks
+         SET title = ?,
+             description = ?,
+             assigned_to_id = ?,
+             milestone_id = ?,
+             priority = ?,
+             deadline = ?,
+             task_type = ?,
+             status = ?,
+             completion_evidence = ?,
+             verification_status = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?;`,
+        [
+          title !== undefined ? title.trim() : existing.title,
+          description !== undefined ? description.trim() : existing.description,
+          assignedToId !== undefined ? assignedToId : existing.assigned_to_id,
+          milestoneId !== undefined ? milestoneId : existing.milestone_id,
+          priority !== undefined ? priority : existing.priority,
+          deadline !== undefined ? deadline : existing.deadline,
+          taskType !== undefined ? taskType : existing.task_type,
+          validStatus,
+          completionEvidence !== undefined ? completionEvidence : existing.completion_evidence,
+          verificationStatus !== undefined ? verificationStatus : existing.verification_status,
+          taskId,
+        ]
+      );
+
+      // If status changed to Completed and was not completed before
+      if (validStatus === 'Completed' && existing.status !== 'Completed') {
+        const beneficiaryId = existing.assigned_to_id || userId;
+        if (beneficiaryId) {
+          execute('UPDATE users SET xp = xp + ?, points = points + ? WHERE id = ?;', [
+            existing.xp_value,
+            existing.xp_value,
+            beneficiaryId,
+          ]);
+
+          execute(
+            `INSERT INTO contributions (user_id, project_id, task_id, activity_type, points, xp, description)
+             VALUES (?, ?, ?, 'task_completion', ?, ?, ?);`,
+            [beneficiaryId, existing.project_id, taskId, existing.xp_value, existing.xp_value, `Completed task: ${existing.title}`]
+          );
+        }
+      }
+
+      recalculateProjectProgress(existing.project_id);
+      return this.getTaskById(taskId);
+    });
+  },
+
+  submitEvidence(taskId, evidence, userId) {
+    if (!evidence || !evidence.trim()) {
+      const err = new Error('Completion evidence is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const task = queryOne('SELECT * FROM tasks WHERE id = ?;', [taskId]);
+    if (!task) {
+      const err = new Error('Task not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    return transaction(() => {
+      execute(
+        `UPDATE tasks
+         SET status = 'Verification Pending',
+             completion_evidence = ?,
+             verification_status = 'pending',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?;`,
+        [evidence.trim(), taskId]
+      );
+
+      return this.getTaskById(taskId);
+    });
+  },
+
+  deleteTask(taskId) {
+    const task = queryOne('SELECT project_id FROM tasks WHERE id = ?;', [taskId]);
+    if (!task) {
+      const err = new Error('Task not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    return transaction(() => {
+      execute('DELETE FROM tasks WHERE id = ?;', [taskId]);
+      recalculateProjectProgress(task.project_id);
+      return { success: true, message: 'Task deleted successfully.' };
+    });
+  },
+};
