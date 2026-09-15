@@ -17,8 +17,15 @@ function Project() {
   // Modals
   const [showRepoModal, setShowRepoModal] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
+  const [repoToken, setRepoToken] = useState("");
+  const [repoBranch, setRepoBranch] = useState("main");
   const [repoSyncing, setRepoSyncing] = useState(false);
   const [repoMsg, setRepoMsg] = useState("");
+  const [githubTab, setGithubTab] = useState("commits"); // commits, prs, issues
+  const [repoCommits, setRepoCommits] = useState([]);
+  const [repoPulls, setRepoPulls] = useState([]);
+  const [repoIssues, setRepoIssues] = useState([]);
+  const [repoStatus, setRepoStatus] = useState(null);
 
   const [showMilestoneModal, setShowMilestoneModal] = useState(false);
   const [milestoneTitle, setMilestoneTitle] = useState("");
@@ -57,10 +64,14 @@ function Project() {
 
     // Load auxiliary tasks, activities, and sidebar projects without blocking or failing project display
     try {
-      const [tasksRes, actRes, myProjsRes] = await Promise.allSettled([
+      const [tasksRes, actRes, myProjsRes, commitsRes, prsRes, issuesRes, statusRes] = await Promise.allSettled([
         api.tasks.getAll({ projectId: id }),
         api.github.getActivities(id, 10),
         api.projects.getMy(),
+        api.github.getCommits(id, 20),
+        api.github.getPullRequests(id, 20),
+        api.github.getIssues(id, 20),
+        api.github.getStatus(id),
       ]);
 
       if (tasksRes.status === "fulfilled" && tasksRes.value?.success) {
@@ -71,6 +82,18 @@ function Project() {
       }
       if (myProjsRes.status === "fulfilled" && myProjsRes.value?.success) {
         setUserProjects(myProjsRes.value.data || []);
+      }
+      if (commitsRes.status === "fulfilled" && commitsRes.value?.success) {
+        setRepoCommits(commitsRes.value.data || []);
+      }
+      if (prsRes.status === "fulfilled" && prsRes.value?.success) {
+        setRepoPulls(prsRes.value.data || []);
+      }
+      if (issuesRes.status === "fulfilled" && issuesRes.value?.success) {
+        setRepoIssues(issuesRes.value.data || []);
+      }
+      if (statusRes.status === "fulfilled" && statusRes.value?.success) {
+        setRepoStatus(statusRes.value.data || null);
       }
     } catch (auxErr) {
       console.warn("Error fetching auxiliary project details:", auxErr);
@@ -86,9 +109,11 @@ function Project() {
     setRepoMsg("");
 
     try {
-      await api.github.connect(id, repoUrl);
+      await api.github.connect(id, repoUrl, repoToken || undefined, repoBranch || undefined);
       setShowRepoModal(false);
       setRepoUrl("");
+      setRepoToken("");
+      setRepoBranch("main");
       loadProjectData();
     } catch (err) {
       setRepoMsg(err.message || "Failed to link repository.");
@@ -447,48 +472,164 @@ function Project() {
 
                 {project.repository ? (
                   <div>
-                    <a
-                      href={project.repository.repo_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        color: "#a78bfa",
-                        fontSize: "12px",
-                        fontWeight: "600",
-                        display: "block",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      {project.repository.owner} / {project.repository.repo_name} ↗
-                    </a>
-                    <span style={{ fontSize: "10px", color: "#71717a", display: "block" }}>
-                      Default branch: <code>{project.repository.default_branch}</code>
-                    </span>
-                    <span style={{ fontSize: "9px", color: "#52525b", display: "block", marginTop: "4px" }}>
-                      Last synced: {project.repository.last_synced_at ? new Date(project.repository.last_synced_at).toLocaleTimeString() : "Never"}
-                    </span>
-
-                    {/* RECENT REPO ACTIVITIES */}
-                    <div style={{ marginTop: "16px", borderTop: "1px solid #1f2028", paddingTop: "12px" }}>
-                      <span style={{ fontSize: "10px", fontWeight: "700", color: "#71717a", letterSpacing: "1px", textTransform: "uppercase" }}>
-                        Recent Activity
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "4px" }}>
+                      <a
+                        href={project.repository.repo_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          color: "#a78bfa",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                          textDecoration: "none",
+                        }}
+                      >
+                        {project.repository.owner} / {project.repository.repo_name} ↗
+                      </a>
+                      <span
+                        style={{
+                          fontSize: "8px",
+                          fontWeight: "700",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          background: project.repository.sync_status === "failed" ? "rgba(239,68,68,0.2)" : "rgba(34,197,94,0.15)",
+                          color: project.repository.sync_status === "failed" ? "#f87171" : "#4ade80",
+                          border: `1px solid ${project.repository.sync_status === "failed" ? "#7f1d1d" : "#14532d"}`,
+                        }}
+                      >
+                        ● {project.repository.sync_status === "synced" ? "Synced" : project.repository.sync_status === "syncing" ? "Syncing" : project.repository.sync_status === "failed" ? "Error" : "Linked"}
                       </span>
-                      <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                        {activities.length > 0 ? (
-                          activities.map((act) => (
-                            <div key={act.id} style={{ fontSize: "10px", color: "#a1a1aa" }}>
-                              <strong style={{ color: "#e4e4e7" }}>{act.title}</strong>
-                              <div style={{ fontSize: "8px", color: "#52525b" }}>
-                                by {act.author_username} · {new Date(act.timestamp).toLocaleDateString()}
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#71717a", marginTop: "2px" }}>
+                      <span>Branch: <code style={{ color: "#c4b5fd" }}>{project.repository.default_branch}</code></span>
+                      <span>Last synced: {project.repository.last_synced_at ? new Date(project.repository.last_synced_at).toLocaleTimeString() : "Never"}</span>
+                    </div>
+
+                    {/* METRICS & TAB SWITCHER */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px", marginTop: "14px", marginBottom: "12px" }}>
+                      <button
+                        type="button"
+                        onClick={() => setGithubTab("commits")}
+                        style={{
+                          background: githubTab === "commits" ? "#1e1b4b" : "#13141a",
+                          border: `1px solid ${githubTab === "commits" ? "#6366f1" : "#282a34"}`,
+                          borderRadius: "6px",
+                          padding: "8px 6px",
+                          color: githubTab === "commits" ? "#e0e7ff" : "#8b8f9b",
+                          cursor: "pointer",
+                          textAlign: "center",
+                        }}
+                      >
+                        <div style={{ fontSize: "14px", fontWeight: "700" }}>{repoStatus?.metrics?.commits ?? repoCommits.length}</div>
+                        <div style={{ fontSize: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Commits</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setGithubTab("prs")}
+                        style={{
+                          background: githubTab === "prs" ? "#1e1b4b" : "#13141a",
+                          border: `1px solid ${githubTab === "prs" ? "#6366f1" : "#282a34"}`,
+                          borderRadius: "6px",
+                          padding: "8px 6px",
+                          color: githubTab === "prs" ? "#e0e7ff" : "#8b8f9b",
+                          cursor: "pointer",
+                          textAlign: "center",
+                        }}
+                      >
+                        <div style={{ fontSize: "14px", fontWeight: "700" }}>{repoStatus?.metrics?.pullRequests ?? repoPulls.length}</div>
+                        <div style={{ fontSize: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Pull Requests</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setGithubTab("issues")}
+                        style={{
+                          background: githubTab === "issues" ? "#1e1b4b" : "#13141a",
+                          border: `1px solid ${githubTab === "issues" ? "#6366f1" : "#282a34"}`,
+                          borderRadius: "6px",
+                          padding: "8px 6px",
+                          color: githubTab === "issues" ? "#e0e7ff" : "#8b8f9b",
+                          cursor: "pointer",
+                          textAlign: "center",
+                        }}
+                      >
+                        <div style={{ fontSize: "14px", fontWeight: "700" }}>{repoStatus?.metrics?.issues ?? repoIssues.length}</div>
+                        <div style={{ fontSize: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Issues</div>
+                      </button>
+                    </div>
+
+                    {/* TAB CONTENT LIST */}
+                    <div style={{ borderTop: "1px solid #1f2028", paddingTop: "10px", maxHeight: "200px", overflowY: "auto" }}>
+                      {githubTab === "commits" && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {repoCommits.length > 0 ? (
+                            repoCommits.map((c) => (
+                              <div key={c.id} style={{ fontSize: "10px", background: "#111218", padding: "6px 8px", borderRadius: "4px", border: "1px solid #1b1d24" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "6px" }}>
+                                  <span style={{ color: "#e4e4e7", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                                    {c.title}
+                                  </span>
+                                  <code style={{ fontSize: "8px", color: "#a78bfa", background: "#1f1d2b", padding: "1px 4px", borderRadius: "2px" }}>
+                                    {c.commit_hash ? c.commit_hash.substring(0, 7) : "commit"}
+                                  </code>
+                                </div>
+                                <div style={{ fontSize: "8px", color: "#71717a", marginTop: "3px" }}>
+                                  by <strong style={{ color: "#a1a1aa" }}>{c.matched_user_name || c.author_username}</strong> · {new Date(c.timestamp).toLocaleDateString()}
+                                </div>
                               </div>
-                            </div>
-                          ))
-                        ) : (
-                          <span style={{ fontSize: "10px", color: "#52525b" }}>
-                            No repository activities recorded yet.
-                          </span>
-                        )}
-                      </div>
+                            ))
+                          ) : (
+                            <span style={{ fontSize: "10px", color: "#52525b" }}>No commits synced yet. Click "Sync Now" to fetch.</span>
+                          )}
+                        </div>
+                      )}
+
+                      {githubTab === "prs" && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {repoPulls.length > 0 ? (
+                            repoPulls.map((p) => (
+                              <div key={p.id} style={{ fontSize: "10px", background: "#111218", padding: "6px 8px", borderRadius: "4px", border: "1px solid #1b1d24" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "6px" }}>
+                                  <span style={{ color: "#e4e4e7", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                                    #{p.pr_number} {p.title}
+                                  </span>
+                                  <span style={{ fontSize: "8px", color: "#a78bfa" }}>
+                                    {p.branch || "main"}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: "8px", color: "#71717a", marginTop: "3px" }}>
+                                  opened by <strong style={{ color: "#a1a1aa" }}>{p.matched_user_name || p.author_username}</strong> · {new Date(p.timestamp).toLocaleDateString()}
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <span style={{ fontSize: "10px", color: "#52525b" }}>No pull requests synced yet.</span>
+                          )}
+                        </div>
+                      )}
+
+                      {githubTab === "issues" && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {repoIssues.length > 0 ? (
+                            repoIssues.map((iss) => (
+                              <div key={iss.id} style={{ fontSize: "10px", background: "#111218", padding: "6px 8px", borderRadius: "4px", border: "1px solid #1b1d24" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "6px" }}>
+                                  <span style={{ color: "#e4e4e7", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                                    #{iss.pr_number || "issue"} {iss.title}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: "8px", color: "#71717a", marginTop: "3px" }}>
+                                  reported by <strong style={{ color: "#a1a1aa" }}>{iss.matched_user_name || iss.author_username}</strong> · {new Date(iss.timestamp).toLocaleDateString()}
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <span style={{ fontSize: "10px", color: "#52525b" }}>No issues synced yet.</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -583,7 +724,7 @@ function Project() {
             )}
 
             <form onSubmit={handleConnectRepo}>
-              <label>GitHub Repository URL</label>
+              <label>GitHub Repository URL *</label>
               <input
                 type="text"
                 placeholder="https://github.com/owner/repository"
@@ -592,7 +733,28 @@ function Project() {
                 required
               />
 
-              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+              <label style={{ marginTop: "12px", display: "block" }}>Default Branch</label>
+              <input
+                type="text"
+                placeholder="main"
+                value={repoBranch}
+                onChange={(e) => setRepoBranch(e.target.value)}
+              />
+
+              <label style={{ marginTop: "12px", display: "block" }}>
+                GitHub Personal Access Token (Optional)
+                <span style={{ fontSize: "9px", color: "#71717a", fontWeight: "normal", marginLeft: "6px" }}>
+                  (Enables private repos & avoids API rate limits)
+                </span>
+              </label>
+              <input
+                type="password"
+                placeholder="ghp_..."
+                value={repoToken}
+                onChange={(e) => setRepoToken(e.target.value)}
+              />
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
                 <button
                   type="button"
                   onClick={() => setShowRepoModal(false)}

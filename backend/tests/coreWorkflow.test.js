@@ -277,11 +277,16 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
     const res = await request(app)
       .post(`/api/github/${projectId}/connect`)
       .set('Authorization', `Bearer ${studentToken}`)
-      .send({ repoUrl: 'https://github.com/cloudninjas/monitor-daemon' });
+      .send({
+        repoUrl: 'https://github.com/cloudninjas/monitor-daemon',
+        defaultBranch: 'main',
+        accessToken: 'ghp_fake_test_token_123',
+      });
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.data.repo_name, 'monitor-daemon');
     assert.strictEqual(res.body.data.owner, 'cloudninjas');
+    assert.strictEqual(res.body.data.default_branch, 'main');
   });
 
   test('Sync repository gracefully even when remote is mocked/offline', async () => {
@@ -291,6 +296,40 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.success, true);
+  });
+
+  test('Query GitHub status, commits, PRs, and issues endpoints', async () => {
+    // 1. Check status endpoint
+    const statusRes = await request(app)
+      .get(`/api/github/${projectId}/status`)
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.strictEqual(statusRes.status, 200);
+    assert.strictEqual(statusRes.body.success, true);
+    assert.ok(statusRes.body.data.metrics);
+    assert.strictEqual(typeof statusRes.body.data.metrics.commits, 'number');
+    assert.strictEqual(typeof statusRes.body.data.metrics.pullRequests, 'number');
+    assert.strictEqual(typeof statusRes.body.data.metrics.issues, 'number');
+
+    // 2. Check commits endpoint
+    const commitsRes = await request(app)
+      .get(`/api/github/${projectId}/commits`)
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.strictEqual(commitsRes.status, 200);
+    assert.ok(Array.isArray(commitsRes.body.data));
+
+    // 3. Check PRs endpoint
+    const prsRes = await request(app)
+      .get(`/api/github/${projectId}/pull-requests`)
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.strictEqual(prsRes.status, 200);
+    assert.ok(Array.isArray(prsRes.body.data));
+
+    // 4. Check issues endpoint
+    const issuesRes = await request(app)
+      .get(`/api/github/${projectId}/issues`)
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.strictEqual(issuesRes.status, 200);
+    assert.ok(Array.isArray(issuesRes.body.data));
   });
 
   // 7. Dashboard Progress & Activity Feed

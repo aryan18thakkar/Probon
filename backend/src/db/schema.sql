@@ -125,6 +125,9 @@ CREATE TABLE IF NOT EXISTS repositories (
   repo_name TEXT NOT NULL,
   owner TEXT NOT NULL,
   default_branch TEXT DEFAULT 'main',
+  access_token TEXT,
+  sync_status TEXT CHECK(sync_status IN ('idle', 'syncing', 'synced', 'error')) DEFAULT 'idle',
+  sync_error TEXT,
   last_synced_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE

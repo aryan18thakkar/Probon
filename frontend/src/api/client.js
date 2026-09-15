@@ -168,18 +168,27 @@ export const api = {
   },
 
   github: {
-    connect: (projectId, repoUrl) =>
-      request(`/github/${projectId}/connect`, {
+    connect: (projectId, data) => {
+      const payload = typeof data === 'string' ? { repoUrl: data } : data;
+      return request(`/github/${projectId}/connect`, {
         method: 'POST',
-        body: JSON.stringify({ repoUrl }),
-      }),
+        body: JSON.stringify(payload),
+      });
+    },
     get: (projectId) => request(`/github/${projectId}`),
+    getStatus: (projectId) => request(`/github/${projectId}/status`),
     sync: (projectId) =>
       request(`/github/${projectId}/sync`, {
         method: 'POST',
       }),
     getActivities: (projectId, limit = 25) =>
       request(`/github/${projectId}/activities?limit=${limit}`),
+    getCommits: (projectId, limit = 25) =>
+      request(`/github/${projectId}/commits?limit=${limit}`),
+    getPullRequests: (projectId, limit = 25) =>
+      request(`/github/${projectId}/pull-requests?limit=${limit}`),
+    getIssues: (projectId, limit = 25) =>
+      request(`/github/${projectId}/issues?limit=${limit}`),
   },
 
   progress: {

@@ -32,6 +32,24 @@ export function runMigrations() {
     console.error('Migration error checking auth columns:', err);
   }
 
+  // Ensure repositories table has access_token, sync_status, sync_error columns
+  try {
+    const repoCols = db.prepare('PRAGMA table_info(repositories);').all();
+    const existing = new Set(repoCols.map((c) => c.name));
+
+    if (!existing.has('access_token')) {
+      db.exec('ALTER TABLE repositories ADD COLUMN access_token TEXT;');
+    }
+    if (!existing.has('sync_status')) {
+      db.exec("ALTER TABLE repositories ADD COLUMN sync_status TEXT DEFAULT 'idle';");
+    }
+    if (!existing.has('sync_error')) {
+      db.exec('ALTER TABLE repositories ADD COLUMN sync_error TEXT;');
+    }
+  } catch (err) {
+    console.error('Migration error checking repositories columns:', err);
+  }
+
   console.log('Database migrations applied successfully.');
 }
 
