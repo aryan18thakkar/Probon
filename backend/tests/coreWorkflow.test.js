@@ -405,6 +405,25 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
     assert.strictEqual(recordRes2.body.data.recorded, false, 'Duplicate external_id should be skipped');
   });
 
+  test('Query project analytics, velocity, and team member distribution', async () => {
+    const res = await request(app)
+      .get(`/api/progress/analytics/${projectId}`)
+      .set('Authorization', `Bearer ${studentToken}`);
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.success, true);
+    assert.strictEqual(res.body.data.projectId, Number(projectId));
+    assert.ok(res.body.data.summary);
+    assert.ok(typeof res.body.data.summary.totalTasks === 'number');
+    assert.ok(typeof res.body.data.summary.completedTasks === 'number');
+    assert.ok(typeof res.body.data.summary.completionRate === 'number');
+    assert.ok(Array.isArray(res.body.data.memberAnalytics));
+    assert.ok(res.body.data.memberAnalytics.length > 0);
+    assert.ok(typeof res.body.data.memberAnalytics[0].percentage === 'number');
+    assert.ok(res.body.data.activityBreakdown);
+    assert.ok(Array.isArray(res.body.data.velocityTimeline));
+  });
+
   // 8. User Scoping & Isolation between different Students, Teams, Projects, and Tasks
   test('Strict User Scoping: Student A cannot retrieve Student B team project or tasks through user-scoped endpoints', async () => {
     // 1. Register Student A

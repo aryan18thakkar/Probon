@@ -206,6 +206,7 @@ export const api = {
       const qs = new URLSearchParams(params).toString();
       return request(`/progress/contributions/project/${projectId}${qs ? `?${qs}` : ''}`);
     },
+    getAnalytics: (projectId) => request(`/progress/analytics/${projectId}`),
     recordContribution: (data) =>
       request('/progress/contributions', {
         method: 'POST',

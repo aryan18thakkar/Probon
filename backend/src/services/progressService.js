@@ -191,4 +191,132 @@ export const progressService = {
       [projectId, limit]
     );
   },
+
+  getProjectAnalytics(projectId) {
+    const project = projectService.getProjectById(projectId);
+
+    // 1. Task counts by status
+    const taskRows = queryAll('SELECT status, COUNT(*) as count FROM tasks WHERE project_id = ? GROUP BY status;', [projectId]);
+    const tasksByStatus = { Planned: 0, 'In Progress': 0, 'Verification Pending': 0, Completed: 0 };
+    let totalTasks = 0;
+    for (const r of taskRows) {
+      tasksByStatus[r.status] = r.count;
+      totalTasks += r.count;
+    }
+    const completedTasks = tasksByStatus['Completed'] || 0;
+    const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+    // 2. Contributions and Activity Type breakdown
+    const activityRows = queryAll(
+      `SELECT activity_type, COUNT(*) as count, COALESCE(SUM(xp), 0) as xp
+       FROM contributions
+       WHERE project_id = ?
+       GROUP BY activity_type;`,
+      [projectId]
+    );
+
+    let totalContributions = 0;
+    let totalXp = 0;
+    const activityBreakdown = {};
+    for (const r of activityRows) {
+      activityBreakdown[r.activity_type] = { count: r.count, xp: r.xp };
+      totalContributions += r.count;
+      totalXp += r.xp;
+    }
+
+    // 3. Team Member Contributions & Share
+    const teamMembers = queryAll(
+      `SELECT u.id, u.name, u.username, u.avatar, tm.role
+       FROM team_members tm
+       JOIN projects p ON p.team_id = tm.team_id
+       JOIN users u ON tm.user_id = u.id
+       WHERE p.id = ?;`,
+      [projectId]
+    );
+
+    const memberContribs = queryAll(
+      `SELECT c.user_id, COUNT(*) as count, COALESCE(SUM(c.xp), 0) as xp
+       FROM contributions c
+       WHERE c.project_id = ?
+       GROUP BY c.user_id;`,
+      [projectId]
+    );
+
+    const memberCompletedTasks = queryAll(
+      `SELECT t.assigned_to_id as user_id, COUNT(*) as count
+       FROM tasks t
+       WHERE t.project_id = ? AND t.status = 'Completed' AND t.assigned_to_id IS NOT NULL
+       GROUP BY t.assigned_to_id;`,
+      [projectId]
+    );
+
+    const contribMap = new Map(memberContribs.map((c) => [c.user_id, c]));
+    const taskMap = new Map(memberCompletedTasks.map((t) => [t.user_id, t.count]));
+
+    const memberIds = new Set(teamMembers.map((m) => m.id));
+    const allMembers = [...teamMembers];
+
+    for (const c of memberContribs) {
+      if (!memberIds.has(c.user_id)) {
+        const u = queryOne('SELECT id, name, username, avatar, role FROM users WHERE id = ?;', [c.user_id]);
+        if (u) {
+          allMembers.push({ ...u, role: u.role });
+          memberIds.add(u.id);
+        }
+      }
+    }
+
+    const memberAnalytics = allMembers.map((m) => {
+      const contrib = contribMap.get(m.id);
+      const contribCount = contrib?.count || 0;
+      const xpEarned = contrib?.xp || 0;
+      const tasksCompleted = taskMap.get(m.id) || 0;
+      const percentage = totalContributions > 0 ? Math.round((contribCount / totalContributions) * 100) : 0;
+
+      return {
+        userId: m.id,
+        name: m.name,
+        username: m.username,
+        avatar: m.avatar,
+        role: m.role,
+        contributionCount: contribCount,
+        xpEarned,
+        tasksCompleted,
+        percentage,
+      };
+    }).sort((a, b) => b.contributionCount - a.contributionCount || b.xpEarned - a.xpEarned);
+
+    // 4. Daily velocity timeline (last 14 days)
+    const velocityTimeline = queryAll(
+      `SELECT strftime('%Y-%m-%d', recorded_at) as date,
+              COUNT(*) as count,
+              COALESCE(SUM(xp), 0) as xp
+       FROM contributions
+       WHERE project_id = ? AND recorded_at >= datetime('now', '-14 days')
+       GROUP BY strftime('%Y-%m-%d', recorded_at)
+       ORDER BY date ASC;`,
+      [projectId]
+    );
+
+    const recentVelocityCount = velocityTimeline.reduce((acc, curr) => acc + curr.count, 0);
+
+    return {
+      projectId: Number(projectId),
+      projectName: project.name,
+      projectStatus: project.status,
+      summary: {
+        totalTasks,
+        completedTasks,
+        completionRate,
+        totalContributions,
+        totalXp,
+        recentVelocityCount,
+      },
+      tasksByStatus,
+      activityBreakdown,
+      memberAnalytics,
+      velocityTimeline,
+    };
+  },
 };
+

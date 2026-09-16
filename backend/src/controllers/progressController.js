@@ -46,6 +46,19 @@ export const progressController = {
     }
   },
 
+  getProjectAnalytics(req, res, next) {
+    try {
+      const { projectId } = req.params;
+      const analytics = progressService.getProjectAnalytics(parseInt(projectId, 10));
+      res.status(200).json({
+        success: true,
+        data: analytics,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   recordContribution(req, res, next) {
     try {
       const { projectId, taskId, activityType, points, xp, description, externalId, metadata } = req.body;

@@ -53,6 +53,7 @@ function Project() {
   const [feedbackType, setFeedbackType] = useState("teacher_review");
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
 
   const loadProjectData = async () => {
     try {
@@ -73,7 +74,7 @@ function Project() {
 
     // Load auxiliary tasks, activities, and sidebar projects without blocking or failing project display
     try {
-      const [tasksRes, actRes, myProjsRes, commitsRes, prsRes, issuesRes, statusRes] = await Promise.allSettled([
+      const [tasksRes, actRes, myProjsRes, commitsRes, prsRes, issuesRes, statusRes, analyticsRes] = await Promise.allSettled([
         api.tasks.getAll({ projectId: id }),
         api.github.getActivities(id, 10),
         api.projects.getMy(),
@@ -81,6 +82,7 @@ function Project() {
         api.github.getPullRequests(id, 20),
         api.github.getIssues(id, 20),
         api.github.getStatus(id),
+        api.progress.getAnalytics(id),
       ]);
 
       if (tasksRes.status === "fulfilled" && tasksRes.value?.success) {
@@ -103,6 +105,9 @@ function Project() {
       }
       if (statusRes.status === "fulfilled" && statusRes.value?.success) {
         setRepoStatus(statusRes.value.data || null);
+      }
+      if (analyticsRes.status === "fulfilled" && analyticsRes.value?.success) {
+        setAnalytics(analyticsRes.value.data || null);
       }
 
       // Load project feedback and current user
@@ -812,6 +817,282 @@ function Project() {
                   ) : (
                     <div style={{ padding: "14px", textAlign: "center", color: "#52525b", fontSize: "10px" }}>
                       No evaluation feedback recorded for this project yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* TEAM CONTRIBUTION ANALYTICS & VELOCITY */}
+          <div
+            style={{
+              marginTop: "28px",
+              padding: "24px",
+              borderRadius: "12px",
+              background: "#0d0e13",
+              border: "1px solid #252832",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
+              <div>
+                <h3 style={{ margin: "0 0 6px", fontSize: "17px", color: "#f4f4f5" }}>
+                  Team Contribution Engine & Velocity
+                </h3>
+                <p style={{ margin: 0, color: "#71717a", fontSize: "12px" }}>
+                  Quantified breakdown of individual member output, sprint velocity, and code contributions.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <span
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: "6px",
+                    background: "#181326",
+                    border: "1px solid #3b2a5c",
+                    color: "#c084fc",
+                    fontSize: "11px",
+                    fontWeight: "600",
+                  }}
+                >
+                  ⚡ {analytics?.summary?.totalContributions || 0} Total Activities
+                </span>
+                <span
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: "6px",
+                    background: "#101a16",
+                    border: "1px solid #1d3c31",
+                    color: "#34d399",
+                    fontSize: "11px",
+                    fontWeight: "600",
+                  }}
+                >
+                  📈 {analytics?.summary?.completionRate || 0}% Task Completion
+                </span>
+              </div>
+            </div>
+
+            {/* CONTRIBUTION DISTRIBUTION STACKED BAR */}
+            {analytics?.memberAnalytics && analytics.memberAnalytics.length > 0 && (
+              <div style={{ marginBottom: "24px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "8px" }}>
+                  <span style={{ color: "#a1a1aa", fontWeight: "600" }}>Team Effort Distribution</span>
+                  <span style={{ color: "#71717a", fontSize: "10px" }}>Across all project commits, tasks & reviews</span>
+                </div>
+
+                {/* Stacked Bar */}
+                <div
+                  style={{
+                    height: "14px",
+                    borderRadius: "8px",
+                    background: "#181920",
+                    display: "flex",
+                    overflow: "hidden",
+                    border: "1px solid #282a34",
+                  }}
+                >
+                  {analytics.memberAnalytics.map((m, idx) => {
+                    const colors = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#06b6d4"];
+                    const color = colors[idx % colors.length];
+                    return (
+                      <div
+                        key={m.userId}
+                        title={`${m.name}: ${m.percentage}% (${m.contributionCount} contributions)`}
+                        style={{
+                          width: `${Math.max(m.percentage, 2)}%`,
+                          background: color,
+                          transition: "width 0.3s ease",
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Legend */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "14px", marginTop: "10px" }}>
+                  {analytics.memberAnalytics.map((m, idx) => {
+                    const colors = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#06b6d4"];
+                    const color = colors[idx % colors.length];
+                    return (
+                      <div key={m.userId} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px" }}>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: color }} />
+                        <span style={{ color: "#d4d4d8" }}>{m.name}</span>
+                        <span style={{ color: "#71717a", fontWeight: "700" }}>{m.percentage}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* MEMBER CARDS GRID & VELOCITY TIMELINE */}
+            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "20px" }}>
+              {/* MEMBER BREAKDOWN LIST */}
+              <div>
+                <h4 style={{ margin: "0 0 12px", fontSize: "13px", color: "#a1a1aa" }}>
+                  Member Performance Metrics
+                </h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {analytics?.memberAnalytics && analytics.memberAnalytics.length > 0 ? (
+                    analytics.memberAnalytics.map((m) => (
+                      <div
+                        key={m.userId}
+                        style={{
+                          padding: "12px 16px",
+                          borderRadius: "8px",
+                          background: "#111218",
+                          border: "1px solid #1f2028",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                          <div
+                            style={{
+                              width: "32px",
+                              height: "32px",
+                              borderRadius: "50%",
+                              background: "#21183a",
+                              color: "#c084fc",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            {m.avatar || m.name?.[0] || "U"}
+                          </div>
+                          <div>
+                            <strong style={{ fontSize: "13px", color: "#f4f4f5", display: "block" }}>{m.name}</strong>
+                            <span style={{ fontSize: "10px", color: "#71717a" }}>
+                              @{m.username} · {m.role}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: "16px", textAlign: "right" }}>
+                          <div>
+                            <div style={{ fontSize: "12px", fontWeight: "700", color: "#e4e4e7" }}>
+                              {m.contributionCount}
+                            </div>
+                            <div style={{ fontSize: "9px", color: "#71717a" }}>Activities</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: "12px", fontWeight: "700", color: "#34d399" }}>
+                              {m.tasksCompleted}
+                            </div>
+                            <div style={{ fontSize: "9px", color: "#71717a" }}>Tasks Done</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: "12px", fontWeight: "700", color: "#fbbf24" }}>
+                              +{m.xpEarned}
+                            </div>
+                            <div style={{ fontSize: "9px", color: "#71717a" }}>Project XP</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ padding: "16px", textAlign: "center", color: "#71717a", fontSize: "11px" }}>
+                      No member activity recorded yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* VELOCITY & ACTIVITY BREAKDOWN */}
+              <div>
+                <h4 style={{ margin: "0 0 12px", fontSize: "13px", color: "#a1a1aa" }}>
+                  Activity Type Breakdown
+                </h4>
+                <div
+                  style={{
+                    padding: "16px",
+                    borderRadius: "8px",
+                    background: "#111218",
+                    border: "1px solid #1f2028",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {analytics?.activityBreakdown && Object.keys(analytics.activityBreakdown).length > 0 ? (
+                      Object.entries(analytics.activityBreakdown).map(([type, stats]) => (
+                        <div
+                          key={type}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            fontSize: "11px",
+                          }}
+                        >
+                          <span style={{ color: "#d4d4d8", textTransform: "capitalize" }}>
+                            {type.replace("_", " ")}
+                          </span>
+                          <span style={{ fontWeight: "700", color: "#a78bfa" }}>
+                            {stats.count} ({stats.xp} XP)
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ color: "#71717a", fontSize: "11px", textAlign: "center" }}>
+                        No categorized activities yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 14-Day Velocity Trend */}
+                <h4 style={{ margin: "0 0 12px", fontSize: "13px", color: "#a1a1aa" }}>
+                  14-Day Velocity Trend ({analytics?.summary?.recentVelocityCount || 0} events)
+                </h4>
+                <div
+                  style={{
+                    padding: "16px",
+                    borderRadius: "8px",
+                    background: "#111218",
+                    border: "1px solid #1f2028",
+                  }}
+                >
+                  {analytics?.velocityTimeline && analytics.velocityTimeline.length > 0 ? (
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: "6px", height: "60px", paddingTop: "10px" }}>
+                      {analytics.velocityTimeline.map((item, i) => {
+                        const maxCount = Math.max(...analytics.velocityTimeline.map((v) => v.count), 1);
+                        const heightPct = Math.max(15, Math.round((item.count / maxCount) * 100));
+                        return (
+                          <div
+                            key={i}
+                            title={`${item.date}: ${item.count} contributions (+${item.xp} XP)`}
+                            style={{
+                              flex: 1,
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              height: "100%",
+                              justifyContent: "flex-end",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: "100%",
+                                height: `${heightPct}%`,
+                                background: "#8b5cf6",
+                                borderRadius: "3px 3px 0 0",
+                              }}
+                            />
+                            <span style={{ fontSize: "7px", color: "#71717a", marginTop: "4px" }}>
+                              {item.date.slice(5)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ color: "#71717a", fontSize: "11px", textAlign: "center", padding: "10px 0" }}>
+                      No velocity events in the last 14 days.
                     </div>
                   )}
                 </div>
