@@ -45,6 +45,15 @@ function Project() {
   const [evidenceText, setEvidenceText] = useState("");
   const [submittingEvidence, setSubmittingEvidence] = useState(false);
 
+  // Instructor Feedback Modal & State
+  const [feedbacks, setFeedbacks] = useState([]);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackRating, setFeedbackRating] = useState("5");
+  const [feedbackType, setFeedbackType] = useState("teacher_review");
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
   const loadProjectData = async () => {
     try {
       setLoading(true);
@@ -94,6 +103,19 @@ function Project() {
       }
       if (statusRes.status === "fulfilled" && statusRes.value?.success) {
         setRepoStatus(statusRes.value.data || null);
+      }
+
+      // Load project feedback and current user
+      const [feedRes, meRes] = await Promise.allSettled([
+        api.feedback.getByProject(id),
+        api.auth.me(),
+      ]);
+
+      if (feedRes.status === "fulfilled" && feedRes.value?.success) {
+        setFeedbacks(feedRes.value.data || []);
+      }
+      if (meRes.status === "fulfilled" && meRes.value?.success) {
+        setCurrentUser(meRes.value.data || null);
       }
     } catch (auxErr) {
       console.warn("Error fetching auxiliary project details:", auxErr);
@@ -206,6 +228,37 @@ function Project() {
       loadProjectData();
     } catch (err) {
       alert(err.message || "Failed to confirm verification.");
+    }
+  };
+
+  const handleCreateFeedback = async (e) => {
+    e.preventDefault();
+    setSubmittingFeedback(true);
+    try {
+      await api.feedback.create({
+        projectId: parseInt(id, 10),
+        comment: feedbackComment,
+        rating: parseInt(feedbackRating, 10),
+        type: feedbackType,
+      });
+      setShowFeedbackModal(false);
+      setFeedbackComment("");
+      setFeedbackRating("5");
+      loadProjectData();
+    } catch (err) {
+      alert(err.message || "Failed to submit feedback.");
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
+
+  const handleDeleteFeedback = async (feedbackId) => {
+    if (!window.confirm("Are you sure you want to remove this feedback?")) return;
+    try {
+      await api.feedback.delete(feedbackId);
+      loadProjectData();
+    } catch (err) {
+      alert(err.message || "Failed to delete feedback.");
     }
   };
 
@@ -696,6 +749,73 @@ function Project() {
                   ))}
                 </div>
               </div>
+
+              {/* INSTRUCTOR EVALUATIONS & FEEDBACK CARD */}
+              <div
+                style={{
+                  padding: "20px",
+                  borderRadius: "10px",
+                  background: "#0d0e13",
+                  border: "1px solid #252832",
+                  marginTop: "20px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                  <h4 style={{ margin: 0, fontSize: "14px" }}>Instructor Feedback ({feedbacks.length})</h4>
+                  <button
+                    onClick={() => setShowFeedbackModal(true)}
+                    className="secondary-button"
+                    style={{ fontSize: "9px", padding: "4px 8px" }}
+                  >
+                    + Add Review
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {feedbacks.length > 0 ? (
+                    feedbacks.map((f) => (
+                      <div
+                        key={f.id}
+                        style={{
+                          padding: "10px",
+                          borderRadius: "6px",
+                          background: "#121319",
+                          border: "1px solid #1f2129",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                          <span style={{ fontSize: "10px", fontWeight: "700", color: "#e4e4e7" }}>
+                            {f.author_name} ({f.author_role})
+                          </span>
+                          <span style={{ color: "#facc15", fontSize: "10px" }}>
+                            {"★".repeat(f.rating || 5)}{"☆".repeat(5 - (f.rating || 5))}
+                          </span>
+                        </div>
+                        <p style={{ margin: "4px 0", fontSize: "11px", color: "#a1a1aa", lineHeight: "1.4" }}>
+                          {f.comment}
+                        </p>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                          <span style={{ fontSize: "8px", color: "#52525b" }}>
+                            {new Date(f.created_at).toLocaleDateString()}
+                          </span>
+                          {(currentUser?.id === f.author_id || currentUser?.role === "teacher") && (
+                            <button
+                              onClick={() => handleDeleteFeedback(f.id)}
+                              style={{ background: "none", border: "none", color: "#71717a", fontSize: "9px", cursor: "pointer" }}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ padding: "14px", textAlign: "center", color: "#52525b", fontSize: "10px" }}>
+                      No evaluation feedback recorded for this project yet.
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1040,6 +1160,118 @@ function Project() {
                   disabled={submittingEvidence}
                 >
                   {submittingEvidence ? "Submitting..." : "Submit for Verification"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD FEEDBACK MODAL */}
+      {showFeedbackModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.75)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: "20px",
+          }}
+        >
+          <div className="auth-box" style={{ maxWidth: "440px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h2 style={{ fontSize: "18px", margin: 0 }}>Add Instructor Feedback</h2>
+              <button
+                onClick={() => setShowFeedbackModal(false)}
+                style={{ background: "none", border: "none", color: "#858995", cursor: "pointer", fontSize: "18px" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateFeedback}>
+              <label>Feedback Type</label>
+              <select
+                value={feedbackType}
+                onChange={(e) => setFeedbackType(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: "7px",
+                  border: "1px solid #2b2e38",
+                  background: "#0b0c10",
+                  color: "#eeeeef",
+                  fontSize: "12px",
+                  marginBottom: "14px",
+                }}
+              >
+                <option value="teacher_review">Instructor Review</option>
+                <option value="peer_feedback">Peer Feedback</option>
+                <option value="recommendation">Recommendation</option>
+              </select>
+
+              <label>Rating (1 to 5 Stars)</label>
+              <select
+                value={feedbackRating}
+                onChange={(e) => setFeedbackRating(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: "7px",
+                  border: "1px solid #2b2e38",
+                  background: "#0b0c10",
+                  color: "#eeeeef",
+                  fontSize: "12px",
+                  marginBottom: "14px",
+                }}
+              >
+                <option value="5">★★★★★ - Excellent (5)</option>
+                <option value="4">★★★★☆ - Good (4)</option>
+                <option value="3">★★★☆☆ - Satisfactory (3)</option>
+                <option value="2">★★☆☆☆ - Needs Improvement (2)</option>
+                <option value="1">★☆☆☆☆ - Action Required (1)</option>
+              </select>
+
+              <label>Evaluation Comment *</label>
+              <textarea
+                rows="4"
+                placeholder="Detailed guidance, strengths, and areas for improvement..."
+                value={feedbackComment}
+                onChange={(e) => setFeedbackComment(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: "7px",
+                  border: "1px solid #2b2e38",
+                  background: "#0b0c10",
+                  color: "#eeeeef",
+                  fontSize: "12px",
+                  marginBottom: "16px",
+                  fontFamily: "inherit",
+                }}
+                required
+              />
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowFeedbackModal(false)}
+                  className="secondary-button"
+                  style={{ flex: 1 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="primary-button"
+                  style={{ flex: 1 }}
+                  disabled={submittingFeedback}
+                >
+                  {submittingFeedback ? "Saving..." : "Submit Review"}
                 </button>
               </div>
             </form>

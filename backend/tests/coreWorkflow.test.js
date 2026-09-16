@@ -544,4 +544,33 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
     assert.ok(bTaskIds.includes(taskBId), "Student B must see their own task");
     assert.strictEqual(bTaskIds.includes(taskAId), false, "Student B MUST NOT see Student A's task");
   });
+
+  // 9. Teacher Feedback & Evaluations
+  test('Teacher creates project review feedback and student retrieves it', async () => {
+    // 1. Teacher submits review
+    const createRes = await request(app)
+      .post('/api/feedback')
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({
+        projectId: projectId,
+        comment: 'Outstanding progress on host daemon and test automation.',
+        rating: 5,
+        type: 'teacher_review',
+      });
+
+    assert.strictEqual(createRes.status, 201);
+    assert.strictEqual(createRes.body.data.rating, 5);
+    assert.strictEqual(createRes.body.data.author_role, 'teacher');
+    const feedbackId = createRes.body.data.id;
+
+    // 2. Student retrieves feedback for the project
+    const getRes = await request(app)
+      .get(`/api/feedback/project/${projectId}`)
+      .set('Authorization', `Bearer ${studentToken}`);
+
+    assert.strictEqual(getRes.status, 200);
+    assert.ok(Array.isArray(getRes.body.data));
+    const found = getRes.body.data.some((f) => f.id === feedbackId);
+    assert.strictEqual(found, true, 'Created feedback should be visible to project members');
+  });
 });

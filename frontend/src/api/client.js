@@ -236,4 +236,17 @@ export const api = {
       }),
     getLeaderboard: (limit = 10) => request(`/gamification/leaderboard?limit=${limit}`),
   },
+
+  feedback: {
+    getByProject: (projectId) => request(`/feedback/project/${projectId}`),
+    create: (data) =>
+      request('/feedback', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    delete: (id) =>
+      request(`/feedback/${id}`, {
+        method: 'DELETE',
+      }),
+  },
 };
