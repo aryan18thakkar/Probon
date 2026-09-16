@@ -573,4 +573,38 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
     const found = getRes.body.data.some((f) => f.id === feedbackId);
     assert.strictEqual(found, true, 'Created feedback should be visible to project members');
   });
+
+  // 10. Notifications Lifecycle
+  test('User receives notifications and marks them as read', async () => {
+    // 1. Check student notifications (should contain task verification and feedback notifications)
+    const notifsRes = await request(app)
+      .get('/api/notifications')
+      .set('Authorization', `Bearer ${studentToken}`);
+
+    assert.strictEqual(notifsRes.status, 200);
+    assert.ok(Array.isArray(notifsRes.body.data.items));
+    assert.ok(notifsRes.body.data.items.length > 0, 'Student should have notifications');
+    const firstNotif = notifsRes.body.data.items[0];
+
+    // 2. Mark single notification as read
+    const readRes = await request(app)
+      .put(`/api/notifications/${firstNotif.id}/read`)
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.strictEqual(readRes.status, 200);
+    assert.strictEqual(readRes.body.success, true);
+
+    // 3. Mark all notifications as read
+    const readAllRes = await request(app)
+      .put('/api/notifications/read-all')
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.strictEqual(readAllRes.status, 200);
+    assert.strictEqual(readAllRes.body.success, true);
+
+    // 4. Verify unreadCount is 0
+    const finalNotifsRes = await request(app)
+      .get('/api/notifications?unreadOnly=true')
+      .set('Authorization', `Bearer ${studentToken}`);
+    assert.strictEqual(finalNotifsRes.status, 200);
+    assert.strictEqual(finalNotifsRes.body.data.unreadCount, 0);
+  });
 });

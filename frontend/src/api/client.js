@@ -249,4 +249,23 @@ export const api = {
         method: 'DELETE',
       }),
   },
+
+  notifications: {
+    getAll: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return request(`/notifications${qs ? `?${qs}` : ''}`);
+    },
+    markRead: (id) =>
+      request(`/notifications/${id}/read`, {
+        method: 'PUT',
+      }),
+    markAllRead: () =>
+      request('/notifications/read-all', {
+        method: 'PUT',
+      }),
+    delete: (id) =>
+      request(`/notifications/${id}`, {
+        method: 'DELETE',
+      }),
+  },
 };

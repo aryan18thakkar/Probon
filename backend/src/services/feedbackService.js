@@ -1,4 +1,5 @@
 import { execute, queryAll, queryOne, transaction } from '../config/database.js';
+import { notificationService } from './notificationService.js';
 
 export const feedbackService = {
   createFeedback({ projectId, teamId, userId = null, authorId, comment, rating = 5, type = 'teacher_review' }) {
@@ -31,7 +32,25 @@ export const feedbackService = {
       ]
     );
 
-    return this.getFeedbackById(Number(res.lastInsertRowid));
+    const feedback = this.getFeedbackById(Number(res.lastInsertRowid));
+
+    // Notify project team members
+    const teamMembers = queryAll(
+      'SELECT user_id FROM team_members WHERE team_id = ? AND user_id != ?;',
+      [effectiveTeamId, authorId]
+    );
+
+    for (const m of teamMembers) {
+      notificationService.createNotification({
+        userId: m.user_id,
+        title: 'New Evaluation Feedback',
+        message: `${feedback.author_name} posted a ${feedback.rating}★ review on project "${project.name}".`,
+        type: 'feedback',
+        metadata: { projectId, feedbackId: feedback.id },
+      });
+    }
+
+    return feedback;
   },
 
   getFeedbackById(id) {

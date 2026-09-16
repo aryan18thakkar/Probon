@@ -9,6 +9,7 @@ import progressRoutes from './progressRoutes.js';
 import chatRoutes from './chatRoutes.js';
 import gamificationRoutes from './gamificationRoutes.js';
 import feedbackRoutes from './feedbackRoutes.js';
+import notificationRoutes from './notificationRoutes.js';
 
 const apiRouter = Router();
 
@@ -30,5 +31,6 @@ apiRouter.use('/progress', progressRoutes);
 apiRouter.use('/chat', chatRoutes);
 apiRouter.use('/gamification', gamificationRoutes);
 apiRouter.use('/feedback', feedbackRoutes);
+apiRouter.use('/notifications', notificationRoutes);
 
 export default apiRouter;

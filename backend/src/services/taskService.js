@@ -1,4 +1,5 @@
 import { execute, queryAll, queryOne, transaction } from '../config/database.js';
+import { notificationService } from './notificationService.js';
 
 function recalculateProjectProgress(projectId) {
   const stats = queryOne(
@@ -427,6 +428,16 @@ export const taskService = {
               `task:${taskId}`,
             ]
           );
+
+          notificationService.createNotification({
+            userId: beneficiaryId,
+            title: isApproved ? 'Task Verification Approved' : 'Task Verification Rejected',
+            message: isApproved
+              ? `Your evidence for task "${task.title}" was verified (+${task.xp_value} XP).`
+              : `Your evidence for task "${task.title}" was rejected: ${feedbackNote || 'Needs revision'}.`,
+            type: 'task_verification',
+            metadata: { taskId, approved: isApproved, feedbackNote },
+          });
         }
       }
 
