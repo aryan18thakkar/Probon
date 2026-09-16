@@ -82,4 +82,18 @@ describe('Gamification & Arena Integration', () => {
     assert.strictEqual(res.body.data[0].position, 1);
     assert.ok(res.body.data[0].xp >= (res.body.data[1]?.xp || 0));
   });
+
+  test('GET /api/gamification/achievements should auto-evaluate and return student achievements', async () => {
+    const res = await request(app)
+      .get('/api/gamification/achievements')
+      .set('Authorization', `Bearer ${studentToken}`);
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.success, true);
+    assert.ok(Array.isArray(res.body.data));
+    assert.ok(res.body.data.length > 0);
+    const titles = res.body.data.map(a => a.title);
+    assert.ok(titles.includes('Gladiator') || titles.includes('First Step'));
+  });
 });
+

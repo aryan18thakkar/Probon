@@ -46,4 +46,16 @@ export const gamificationController = {
       next(error);
     }
   },
+
+  getAchievements(req, res, next) {
+    try {
+      const achievements = gamificationService.getUserAchievements(req.user.id);
+      res.status(200).json({
+        success: true,
+        data: achievements,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 };

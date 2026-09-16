@@ -124,4 +124,60 @@ export const gamificationService = {
       position: idx + 1,
     }));
   },
+
+  unlockAchievement(userId, title, badgeIcon, description, xpReward = 50) {
+    const existing = queryOne(
+      'SELECT id FROM achievements WHERE user_id = ? AND title = ?;',
+      [userId, title]
+    );
+
+    if (existing) {
+      return { id: existing.id, unlocked: false };
+    }
+
+    return transaction(() => {
+      const res = execute(
+        `INSERT INTO achievements (user_id, title, badge_icon, description, xp_reward)
+         VALUES (?, ?, ?, ?, ?);`,
+        [userId, title, badgeIcon, description, xpReward]
+      );
+
+      if (xpReward > 0) {
+        execute('UPDATE users SET xp = xp + ?, points = points + ? WHERE id = ?;', [
+          xpReward,
+          xpReward,
+          userId,
+        ]);
+      }
+
+      return { id: Number(res.lastInsertRowid), unlocked: true, xpReward };
+    });
+  },
+
+  getUserAchievements(userId) {
+    // Auto-check achievement thresholds
+    const user = queryOne('SELECT id, xp, points FROM users WHERE id = ?;', [userId]);
+    if (user) {
+      const contribCount = queryOne('SELECT COUNT(*) as count FROM contributions WHERE user_id = ?;', [userId])?.count || 0;
+      const challengeCount = queryOne("SELECT COUNT(*) as count FROM user_challenges WHERE user_id = ? AND status = 'completed';", [userId])?.count || 0;
+
+      if (contribCount >= 1) {
+        this.unlockAchievement(userId, 'First Step', '🌱', 'Recorded your very first project contribution', 50);
+      }
+      if (contribCount >= 5) {
+        this.unlockAchievement(userId, 'Active Contributor', '⚡', 'Reached 5 verified project contributions', 100);
+      }
+      if (challengeCount >= 1) {
+        this.unlockAchievement(userId, 'Gladiator', '⚔', 'Completed your first Weekly Arena challenge', 75);
+      }
+      if (user.xp >= 500) {
+        this.unlockAchievement(userId, 'XP Vanguard', '💎', 'Earned over 500 total community experience points', 150);
+      }
+    }
+
+    return queryAll(
+      'SELECT * FROM achievements WHERE user_id = ? ORDER BY unlocked_at DESC;',
+      [userId]
+    );
+  },
 };

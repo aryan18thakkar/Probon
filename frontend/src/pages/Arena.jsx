@@ -7,6 +7,7 @@ function Arena() {
   const [dashboardData, setDashboardData] = useState(null);
   const [challenges, setChallenges] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [achievements, setAchievements] = useState([]);
   const [activeTab, setActiveTab] = useState("challenges");
   const [loading, setLoading] = useState(true);
 
@@ -19,11 +20,12 @@ function Arena() {
   const loadArenaData = async () => {
     try {
       setLoading(true);
-      const [projsRes, dashRes, arenaRes, leaderRes] = await Promise.allSettled([
+      const [projsRes, dashRes, arenaRes, leaderRes, achRes] = await Promise.allSettled([
         api.projects.getMy(),
         api.progress.getDashboard(),
         api.gamification.getArena(),
         api.gamification.getLeaderboard(10),
+        api.gamification.getAchievements(),
       ]);
 
       if (projsRes.status === "fulfilled" && projsRes.value?.success) {
@@ -37,6 +39,9 @@ function Arena() {
       }
       if (leaderRes.status === "fulfilled" && leaderRes.value?.success) {
         setLeaderboard(leaderRes.value.data || []);
+      }
+      if (achRes.status === "fulfilled" && achRes.value?.success) {
+        setAchievements(achRes.value.data || []);
       }
     } catch (err) {
       console.error("Failed to load arena data:", err);
@@ -171,6 +176,22 @@ function Arena() {
               }}
             >
               Live Leaderboard 🏆
+            </button>
+            <button
+              onClick={() => setActiveTab("achievements")}
+              style={{
+                padding: "8px 16px",
+                borderRadius: "7px",
+                border: "1px solid",
+                borderColor: activeTab === "achievements" ? "#3b2a5c" : "transparent",
+                background: activeTab === "achievements" ? "#181326" : "transparent",
+                color: activeTab === "achievements" ? "#a78bfa" : "#71717a",
+                fontSize: "12px",
+                fontWeight: activeTab === "achievements" ? "600" : "400",
+                cursor: "pointer",
+              }}
+            >
+              Badges & Achievements 🎖️ ({achievements.length})
             </button>
           </div>
 
@@ -394,6 +415,84 @@ function Arena() {
                 ) : (
                   <div style={{ padding: "20px 0", color: "#71717a", textAlign: "center", fontSize: "12px" }}>
                     No leaderboard data available yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "achievements" && (
+            <div
+              style={{
+                padding: "24px",
+                borderRadius: "10px",
+                background: "#0d0e13",
+                border: "1px solid #252832",
+              }}
+            >
+              <div style={{ marginBottom: "20px" }}>
+                <h3 style={{ margin: "0 0 4px", fontSize: "16px" }}>Earned Developer Badges</h3>
+                <p style={{ margin: 0, color: "#71717a", fontSize: "11px" }}>
+                  Milestones and merit awards earned through verified code commits, challenge completions, and community contributions.
+                </p>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                  gap: "16px",
+                }}
+              >
+                {achievements.length > 0 ? (
+                  achievements.map((ach) => (
+                    <div
+                      key={ach.id}
+                      style={{
+                        padding: "20px",
+                        borderRadius: "10px",
+                        background: "#111218",
+                        border: "1px solid #2b253d",
+                        display: "flex",
+                        gap: "16px",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "50px",
+                          height: "50px",
+                          borderRadius: "12px",
+                          background: "#1b1429",
+                          border: "1px solid #3b2865",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "24px",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {ach.badge_icon || "🎖️"}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                          <h4 style={{ margin: 0, fontSize: "14px", color: "#f4f4f5" }}>{ach.title}</h4>
+                          <span style={{ fontSize: "11px", fontWeight: "700", color: "#f59e0b" }}>
+                            +{ach.xp_reward} XP
+                          </span>
+                        </div>
+                        <p style={{ margin: "0 0 6px", fontSize: "11px", color: "#a1a1aa", lineHeight: "1.4" }}>
+                          {ach.description}
+                        </p>
+                        <span style={{ fontSize: "9px", color: "#71717a" }}>
+                          Unlocked {new Date(ach.unlocked_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: "40px 0", color: "#71717a", textAlign: "center", fontSize: "12px", gridColumn: "1 / -1" }}>
+                    No badges unlocked yet. Record contributions, complete tasks, or win weekly challenges to earn achievements!
                   </div>
                 )}
               </div>

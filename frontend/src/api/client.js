@@ -235,6 +235,7 @@ export const api = {
         body: JSON.stringify({ evidence }),
       }),
     getLeaderboard: (limit = 10) => request(`/gamification/leaderboard?limit=${limit}`),
+    getAchievements: () => request('/gamification/achievements'),
   },
 
   feedback: {
