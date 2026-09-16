@@ -161,6 +161,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ evidence }),
       }),
+    confirmVerification: (id, approved, feedbackNote) =>
+      request(`/tasks/${id}/verify`, {
+        method: 'POST',
+        body: JSON.stringify({ approved, feedbackNote }),
+      }),
     delete: (id) =>
       request(`/tasks/${id}`, {
         method: 'DELETE',

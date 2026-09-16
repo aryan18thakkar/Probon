@@ -231,7 +231,7 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
     assert.strictEqual(res.body.data.status, 'In Progress');
   });
 
-  test('Submit completion evidence: In Progress -> Verification Pending', async () => {
+  test('Submit completion evidence: In Progress -> Verification Pending with AI Confidence scoring', async () => {
     const res = await request(app)
       .post(`/api/tasks/${taskId}/evidence`)
       .set('Authorization', `Bearer ${studentToken}`)
@@ -241,6 +241,9 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
     assert.strictEqual(res.body.data.status, 'Verification Pending');
     assert.strictEqual(res.body.data.verification_status, 'pending');
     assert.strictEqual(res.body.data.completion_evidence, 'Implemented in PR #42 with 100% test passing.');
+    assert.ok(res.body.data.verification, 'AI verification object must be attached');
+    assert.ok(res.body.data.verification.confidence_score >= 0.7, 'Confidence score should reflect PR & test keywords');
+    assert.ok(res.body.data.verification.explanation.includes('AI Verification'));
   });
 
   test('Complete task and verify project progress & XP award', async () => {
@@ -251,12 +254,14 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
     const initialXP = meBefore.body.data.xp;
 
     const res = await request(app)
-      .put(`/api/tasks/${taskId}`)
-      .set('Authorization', `Bearer ${studentToken}`)
-      .send({ status: 'Completed' });
+      .post(`/api/tasks/${taskId}/verify`)
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({ approved: true, feedbackNote: 'Great telemetry design and implementation.' });
 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.data.status, 'Completed');
+    assert.strictEqual(res.body.data.verification_status, 'verified');
+    assert.strictEqual(res.body.data.verification.verification_state, 'confirmed');
 
     // Check project progress updated to 100% (1 of 1 completed)
     const projRes = await request(app)
@@ -369,6 +374,7 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
     assert.ok(projContribsRes.body.data.length > 0);
 
     // 3. Record a contribution with an external_id
+    const testExternalId = `review:pr:14:${Date.now()}`;
     const recordRes1 = await request(app)
       .post('/api/progress/contributions')
       .set('Authorization', `Bearer ${studentToken}`)
@@ -378,7 +384,7 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
         points: 20,
         xp: 20,
         description: 'Reviewed Pull Request #14 architecture changes',
-        externalId: 'review:pr:14',
+        externalId: testExternalId,
       });
     assert.strictEqual(recordRes1.status, 201);
     assert.strictEqual(recordRes1.body.data.recorded, true);
@@ -393,7 +399,7 @@ describe('Core Workflow Integration: Classes, Teams, Projects & Tasks', () => {
         points: 20,
         xp: 20,
         description: 'Reviewed Pull Request #14 architecture changes',
-        externalId: 'review:pr:14',
+        externalId: testExternalId,
       });
     assert.strictEqual(recordRes2.status, 201);
     assert.strictEqual(recordRes2.body.data.recorded, false, 'Duplicate external_id should be skipped');

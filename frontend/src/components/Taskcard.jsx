@@ -1,4 +1,4 @@
-function Taskcard({ task, onStatusChange, onSubmitEvidence }) {
+function Taskcard({ task, onStatusChange, onSubmitEvidence, onConfirmVerification, isTeacher = false }) {
   const getPriorityColor = (priority) => {
     switch (priority) {
       case "urgent":
@@ -26,6 +26,7 @@ function Taskcard({ task, onStatusChange, onSubmitEvidence }) {
   };
 
   const statusBadge = getStatusBadge(task.status);
+  const verification = task.verification;
 
   return (
     <div
@@ -96,10 +97,11 @@ function Taskcard({ task, onStatusChange, onSubmitEvidence }) {
         )}
       </div>
 
+      {/* EVIDENCE & AI VERIFICATION DISPLAY */}
       {task.completion_evidence && (
         <div
           style={{
-            padding: "8px 10px",
+            padding: "10px",
             borderRadius: "6px",
             background: "#13141b",
             border: "1px solid #20222b",
@@ -107,10 +109,39 @@ function Taskcard({ task, onStatusChange, onSubmitEvidence }) {
             color: "#a1a1aa",
           }}
         >
-          <strong style={{ color: "#a78bfa", display: "block", marginBottom: "2px" }}>
-            Evidence:
+          <strong style={{ color: "#a78bfa", display: "block", marginBottom: "3px" }}>
+            Submitted Evidence:
           </strong>
-          {task.completion_evidence}
+          <div style={{ marginBottom: "6px" }}>{task.completion_evidence}</div>
+
+          {verification && (
+            <div
+              style={{
+                marginTop: "6px",
+                paddingTop: "6px",
+                borderTop: "1px solid #1c1d25",
+                display: "flex",
+                flexDirection: "column",
+                gap: "3px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "9px", color: "#71717a" }}>AI Confidence Score</span>
+                <span
+                  style={{
+                    fontSize: "9px",
+                    fontWeight: "700",
+                    color: verification.confidence_score >= 0.7 ? "#4ade80" : "#facc15",
+                  }}
+                >
+                  {Math.round(verification.confidence_score * 100)}% Match
+                </span>
+              </div>
+              <div style={{ fontSize: "9px", color: "#60a5fa", fontStyle: "italic" }}>
+                {verification.explanation}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -167,14 +198,35 @@ function Taskcard({ task, onStatusChange, onSubmitEvidence }) {
             </button>
           )}
 
-          {task.status === "Verification Pending" && onStatusChange && (
-            <button
-              onClick={() => onStatusChange(task.id, "Completed")}
-              className="primary-button"
-              style={{ padding: "5px 9px", fontSize: "9px", background: "#16a34a" }}
-            >
-              Mark Completed ✓
-            </button>
+          {task.status === "Verification Pending" && (
+            <>
+              {onConfirmVerification ? (
+                <>
+                  <button
+                    onClick={() => onConfirmVerification(task.id, true)}
+                    className="primary-button"
+                    style={{ padding: "5px 9px", fontSize: "9px", background: "#16a34a" }}
+                  >
+                    Confirm ✓
+                  </button>
+                  <button
+                    onClick={() => onConfirmVerification(task.id, false)}
+                    className="secondary-button"
+                    style={{ padding: "5px 9px", fontSize: "9px", color: "#f87171" }}
+                  >
+                    Reject ✕
+                  </button>
+                </>
+              ) : onStatusChange ? (
+                <button
+                  onClick={() => onStatusChange(task.id, "Completed")}
+                  className="primary-button"
+                  style={{ padding: "5px 9px", fontSize: "9px", background: "#16a34a" }}
+                >
+                  Mark Completed ✓
+                </button>
+              ) : null}
+            </>
           )}
         </div>
       </div>

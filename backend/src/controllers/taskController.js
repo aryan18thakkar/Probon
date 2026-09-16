@@ -101,6 +101,25 @@ export const taskController = {
     }
   },
 
+  confirmVerification(req, res, next) {
+    try {
+      const taskId = parseInt(req.params.id, 10);
+      const { approved, feedbackNote } = req.body;
+      const updated = taskService.confirmVerification(
+        taskId,
+        { approved, feedbackNote },
+        req.user.id
+      );
+      res.status(200).json({
+        success: true,
+        message: approved ? 'Task verification confirmed.' : 'Task returned to in progress.',
+        data: updated,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   deleteTask(req, res, next) {
     try {
       const taskId = parseInt(req.params.id, 10);

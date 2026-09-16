@@ -200,6 +200,15 @@ function Project() {
     }
   };
 
+  const handleConfirmVerification = async (taskId, approved) => {
+    try {
+      await api.tasks.confirmVerification(taskId, approved);
+      loadProjectData();
+    } catch (err) {
+      alert(err.message || "Failed to confirm verification.");
+    }
+  };
+
   if (loading) {
     return (
       <div className="dashboard-page">
@@ -364,6 +373,7 @@ function Project() {
                       task={task}
                       onStatusChange={handleStatusChange}
                       onSubmitEvidence={handleOpenEvidence}
+                      onConfirmVerification={handleConfirmVerification}
                     />
                   ))
                 ) : (

@@ -285,6 +285,67 @@ export const taskService = {
     }
 
     return transaction(() => {
+      // 1. Analyze evidence text and match against project activities
+      const trimmed = evidence.trim();
+      let confidenceScore = 0.50; // base confidence for non-empty text
+      let matchedActivityId = null;
+      const reasons = [];
+
+      // Keyword & length heuristic checks
+      if (trimmed.length > 30) {
+        confidenceScore += 0.15;
+        reasons.push('Detailed descriptive summary provided');
+      }
+
+      // Check for PR mentions
+      const prMatch = trimmed.match(/#(\d+)/) || trimmed.match(/pull\/(\d+)/i) || trimmed.match(/pr\s*#?(\d+)/i);
+      if (prMatch) {
+        const prNum = parseInt(prMatch[1], 10);
+        const actPr = queryOne(
+          `SELECT id FROM github_activities WHERE project_id = ? AND pr_number = ? LIMIT 1;`,
+          [task.project_id, prNum]
+        );
+        if (actPr) {
+          matchedActivityId = actPr.id;
+          confidenceScore += 0.25;
+          reasons.push(`Verified pull request #${prNum} linked in repository`);
+        } else {
+          confidenceScore += 0.10;
+          reasons.push(`Pull request #${prNum} referenced`);
+        }
+      }
+
+      // Check for commit hash mentions (7 to 40 hex chars)
+      const commitMatch = trimmed.match(/\b([0-9a-f]{7,40})\b/i);
+      if (commitMatch) {
+        const hashPrefix = commitMatch[1];
+        const actCommit = queryOne(
+          `SELECT id FROM github_activities WHERE project_id = ? AND commit_hash LIKE ? LIMIT 1;`,
+          [task.project_id, `${hashPrefix}%`]
+        );
+        if (actCommit) {
+          matchedActivityId = matchedActivityId || actCommit.id;
+          confidenceScore += 0.25;
+          reasons.push(`Verified commit ${hashPrefix.substring(0, 7)} matches project repository`);
+        } else {
+          confidenceScore += 0.10;
+          reasons.push(`Commit hash ${hashPrefix.substring(0, 7)} cited`);
+        }
+      }
+
+      // Check for test / verification pass keywords
+      if (/passed|100%|test\s*pass|success|deploy|verified/i.test(trimmed)) {
+        confidenceScore += 0.10;
+        reasons.push('Testing / verification outcome specified');
+      }
+
+      // Cap confidence score between 0.20 and 0.98
+      const finalConfidence = Math.min(0.98, Math.max(0.20, Math.round(confidenceScore * 100) / 100));
+      const explanation = reasons.length > 0
+        ? `AI Verification (${Math.round(finalConfidence * 100)}%): ${reasons.join('; ')}.`
+        : `AI Verification (${Math.round(finalConfidence * 100)}%): Basic completion note submitted.`;
+
+      // Update task status
       execute(
         `UPDATE tasks
          SET status = 'Verification Pending',
@@ -292,9 +353,84 @@ export const taskService = {
              verification_status = 'pending',
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ?;`,
-        [evidence.trim(), taskId]
+        [trimmed, taskId]
       );
 
+      // Record or update task_verifications record
+      execute(
+        `INSERT INTO task_verifications (task_id, activity_id, confidence_score, explanation, verification_state, suggested_evidence)
+         VALUES (?, ?, ?, ?, 'suggested', ?);`,
+        [taskId, matchedActivityId, finalConfidence, explanation, trimmed]
+      );
+
+      return this.getTaskById(taskId);
+    });
+  },
+
+  confirmVerification(taskId, { approved, feedbackNote }, teacherId) {
+    const task = queryOne('SELECT * FROM tasks WHERE id = ?;', [taskId]);
+    if (!task) {
+      const err = new Error('Task not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    return transaction(() => {
+      const isApproved = approved === true || approved === 'true';
+      const newState = isApproved ? 'confirmed' : 'rejected';
+      const newStatus = isApproved ? 'Completed' : 'In Progress';
+      const newVerificationStatus = isApproved ? 'verified' : 'rejected';
+
+      // Update task
+      execute(
+        `UPDATE tasks
+         SET status = ?,
+             verification_status = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?;`,
+        [newStatus, newVerificationStatus, taskId]
+      );
+
+      // Update latest verification record
+      execute(
+        `UPDATE task_verifications
+         SET verification_state = ?,
+             verified_by_id = ?,
+             explanation = COALESCE(?, explanation),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = (
+           SELECT id FROM task_verifications WHERE task_id = ? ORDER BY created_at DESC LIMIT 1
+         );`,
+        [newState, teacherId, feedbackNote || null, taskId]
+      );
+
+      // If approved, award XP/points and contribution if not already completed
+      if (isApproved && task.status !== 'Completed') {
+        const beneficiaryId = task.assigned_to_id || teacherId;
+        if (beneficiaryId) {
+          execute('UPDATE users SET xp = xp + ?, points = points + ? WHERE id = ?;', [
+            task.xp_value,
+            task.xp_value,
+            beneficiaryId,
+          ]);
+
+          execute(
+            `INSERT INTO contributions (user_id, project_id, task_id, activity_type, points, xp, description, external_id)
+             VALUES (?, ?, ?, 'task_completion', ?, ?, ?, ?);`,
+            [
+              beneficiaryId,
+              task.project_id,
+              taskId,
+              task.xp_value,
+              task.xp_value,
+              `Verified & completed task: ${task.title}`,
+              `task:${taskId}`,
+            ]
+          );
+        }
+      }
+
+      recalculateProjectProgress(task.project_id);
       return this.getTaskById(taskId);
     });
   },

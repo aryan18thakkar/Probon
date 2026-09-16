@@ -12,6 +12,7 @@ router.get('/:id', taskController.getTaskById);
 router.post('/', taskController.createTask);
 router.put('/:id', taskController.updateTask);
 router.post('/:id/evidence', taskController.submitEvidence);
+router.post('/:id/verify', taskController.confirmVerification);
 router.delete('/:id', taskController.deleteTask);
 
 export default router;
